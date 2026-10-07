@@ -6,21 +6,6 @@ from prompt import get_operation
 def main():
     question = input("What calculation do you want to do? ")
 
-<<<<<<< Updated upstream
-    operation = get_operation(question)
-
-    print("a:", operation.a)
-    print("b:", operation.b)
-    print("operation:", operation.operation)
-
-    answer = calculate(operation)
-
-    print("answer:", answer)
-
-
-if __name__ == "__main__":
-    main()
-=======
     while True:
         try:
             operation = get_operation(question)
@@ -57,4 +42,3 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     main()
 
->>>>>>> Stashed changes

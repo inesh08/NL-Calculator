@@ -1,10 +1,10 @@
 
 from typing import Literal
-<<<<<<< Updated upstream
-from pydantic import BaseModel
-=======
 
->>>>>>> Stashed changes
+from pydantic import BaseModel
+
+
+
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -18,8 +18,8 @@ class Operation(BaseModel):
 client = OpenAI()
 
 
-<<<<<<< Updated upstream
-=======
+
+
 def validate_operation(operation: Operation) -> Operation:
     try:
         validated = Operation.model_validate(operation.model_dump())
@@ -49,7 +49,7 @@ def validate_operation(operation: Operation) -> Operation:
     return validated
 
 
->>>>>>> Stashed changes
+
 def get_operation(question: str) -> Operation:
     response = client.responses.parse(
         model="gpt-5.6",
@@ -57,13 +57,12 @@ def get_operation(question: str) -> Operation:
             {
                 "role": "system",
                 "content": """
-<<<<<<< Updated upstream
-Read the user's calculation and extract:
+    Read the user's calculation and extract:
 
 a = first number
 b = second number
 operation = add, subtract, multiply, or divide
-=======
+
 You are a calculator assistant.
 
 Classify the user's request into exactly one of these outcomes:
@@ -84,7 +83,7 @@ Classify the user's request into exactly one of these outcomes:
    interpretation.
    Ask a short clarification question in message.
    Set operation, a, and b to null.
->>>>>>> Stashed changes
+
 
 3. out_of_scope
    Use this when the request is not a calculator request.
@@ -95,10 +94,10 @@ The user can enter numbers as digits or words.
 
 Examples:
 
-<<<<<<< Updated upstream
+
 Do not calculate the answer.
 Only return a, b, and operation.
-=======
+
 "3 plus 5"
 a = 3
 b = 5
@@ -116,7 +115,7 @@ operation = divide
 
 Do not calculate the answer.
 Only extract and classify the user's request.
->>>>>>> Stashed changes
+
 """,
             },
             {
@@ -127,12 +126,10 @@ Only extract and classify the user's request.
         text_format=Operation,
     )
 
-<<<<<<< Updated upstream
+
     return response.output_parsed
-=======
+
     if response.output_parsed is None:
         raise ValueError("The model did not return a valid structured response")
 
     return validate_operation(response.output_parsed)
-
->>>>>>> Stashed changes
