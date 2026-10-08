@@ -54,4 +54,3 @@ def calculate(operation: Operation) -> float:
         raise ValueError("Calculation result is not finite")
 
     return round(result, 12)
-
