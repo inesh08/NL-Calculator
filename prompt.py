@@ -1,4 +1,3 @@
-
 from typing import Literal
 
 from pydantic import BaseModel
@@ -10,9 +9,13 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 
 class Operation(BaseModel):
-    operation: Literal["add", "subtract", "multiply", "divide"]
-    a: float
-    b: float
+    model_config = ConfigDict(strict=True)
+
+    outcome: Literal["calculation", "clarification", "out_of_scope"]
+    message: str
+    operation: Literal["add", "subtract", "multiply", "divide"] | None
+    a: float | None
+    b: float | None
 
 
 client = OpenAI()
