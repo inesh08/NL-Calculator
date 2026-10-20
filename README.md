@@ -40,3 +40,38 @@ The benchmark specifies an `outcome` and `message` in its expected structure.
 The current `Operation` model in `prompt.py` does not yet define those fields,
 so the dataset is a target contract and cannot be consumed directly by the
 current model schema without aligning that schema first.
+
+## Slack integration
+
+The Slack adapter is in `slack_app.py`. Users mention the bot with a calculation
+(for example, `@NL Calculator 25 times 4`); the bot replies in a thread. The
+adapter uses the same `get_operation()` and `calculate()` functions as the
+command-line app. Clarification replies should be sent in the same thread and
+mention the bot. The command-line app remains available through `main.py`.
+
+### Slack app configuration
+
+1. Add the bot token scopes `app_mentions:read` and `chat:write`, then subscribe
+   to the `app_mention` bot event.
+2. Install or reinstall the app in the workspace, then invite the bot to each
+   channel where it should answer calculations.
+3. Keep Socket Mode enabled, then create an app-level token with the
+   `connections:write` scope.
+4. Configure `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, and `OPENAI_API_KEY` in a
+   `.env` file for local use or as environment variables where the service will
+   run. `.env.example` shows the names; copy it to `.env` and fill in your own
+   values. Do not commit `.env` or share the secrets. `SLACK_SIGNING_SECRET` is
+   only needed if using the HTTP Events API fallback.
+
+### Run locally
+
+Install dependencies with `python -m pip install -r requirements.txt`, set the
+environment variables, and run `python slack_app.py`. With `SLACK_APP_TOKEN`
+set, the process connects to Slack through Socket Mode and does not need a
+public HTTPS URL. Keep the process running to receive calculations. If using
+the HTTP fallback instead, configure a public HTTPS Request URL to
+`/slack/events` and run the Flask app with a production WSGI server.
+
+The event queue, duplicate-event cache, and pending clarification context are
+kept in process memory. Run one service instance for this initial version; a
+multi-instance deployment needs shared durable storage and a shared job queue.
