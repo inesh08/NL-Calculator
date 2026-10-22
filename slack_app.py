@@ -28,10 +28,16 @@ from slack_bolt import App as SlackApp
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 from calculator import calculate
-from prompt import get_operation
+from interactions import get_tracked_operation
+from storage import initialize_database, save_exchange
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("nl_calculator.slack")
+
+try:
+    initialize_database()
+except Exception:
+    logger.exception("Database initialization failed; conversation saving will be unavailable")
 
 app = Flask(__name__)
 slack_bot_token = os.getenv("SLACK_BOT_TOKEN")
@@ -95,6 +101,7 @@ def _calculate_reply(event: dict) -> None:
     user = event.get("user")
     text = _clean_mention(event.get("text", ""))
     thread_ts = event.get("thread_ts") or event.get("ts")
+    source_event_id = event.get("_event_id") or event.get("ts")
     if not channel or not user or not thread_ts:
         return
     if not text:
@@ -102,6 +109,7 @@ def _calculate_reply(event: dict) -> None:
         return
 
     key = (channel, thread_ts, user)
+    visible_question = text
     with _pending_lock:
         pending = _pending_clarifications.pop(key, None)
     if pending:
@@ -113,7 +121,7 @@ def _calculate_reply(event: dict) -> None:
         )
 
     try:
-        operation = get_operation(text)
+        operation = get_tracked_operation(text)
         if operation.outcome == "out_of_scope":
             reply = operation.message
         elif operation.outcome == "clarification":
@@ -129,6 +137,9 @@ def _calculate_reply(event: dict) -> None:
         logger.exception("Unable to process Slack calculation")
         reply = "Unable to process the request right now. Please try again shortly."
 
+    save_exchange(source="slack", conversation_id=f"{channel}:{thread_ts}",
+                  source_event_id=source_event_id,
+                  question=visible_question, answer=reply)
     _post_message(channel, reply, thread_ts)
 
 
@@ -154,7 +165,9 @@ def _accept_event(event: dict, event_id: str | None) -> None:
             _seen_event_ids[event_id] = None
             while len(_seen_event_ids) > 5000:
                 _seen_event_ids.popitem(last=False)
-    _events.put(event)
+    queued_event = dict(event)
+    queued_event["_event_id"] = event_id
+    _events.put(queued_event)
 
 
 if slack_app is not None:
