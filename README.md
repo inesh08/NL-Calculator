@@ -92,12 +92,19 @@ deduplication, and timestamp metadata; Slack user IDs are not stored.
 Install the added dependencies with `python -m pip install -r requirements.txt`.
 Set `DATABASE_URL` in the environment or `.env`. Run `python main.py` for the
 terminal interface. Run `python monitor.py` as a separate long-lived process to
-perform an initial health check and then a check every 30 minutes. Keeping the
+perform an initial health check and then a check every 2 minutes. Keeping the
 monitor separate prevents duplicate scheduled checks when a web server starts
 multiple workers.
 
 The monitor checks PostgreSQL connectivity and summarizes real LLM requests
-observed in the previous 30 minutes. It does not make a synthetic LLM call, so
+observed in the previous 2 minutes. It does not make a synthetic LLM call, so
 when no users have made requests, LLM status is recorded as `unknown` rather
 than treated as a failure. Results are written to `monitor_runs`; activity
 counts are in `llm_activity`.
+
+### Tests
+
+Run the unit suite with `python -m unittest discover -v`. It covers arithmetic,
+model-response validation, terminal and Slack flows, persistence behavior, and
+monitor scheduling and status decisions. Database and Slack network calls are
+mocked; these unit tests do not replace a live integration check.

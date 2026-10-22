@@ -1,10 +1,6 @@
+from openai import OpenAI
 from typing import Literal
 
-from pydantic import BaseModel
-
-
-
-from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 
@@ -128,9 +124,6 @@ Only extract and classify the user's request.
         ],
         text_format=Operation,
     )
-
-
-    return response.output_parsed
 
     if response.output_parsed is None:
         raise ValueError("The model did not return a valid structured response")
