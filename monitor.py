@@ -1,4 +1,4 @@
-"""Standalone 30-minute PostgreSQL and observed-LLM health monitor."""
+"""Standalone 2-minute PostgreSQL and observed-LLM health monitor."""
 
 from __future__ import annotations
 
@@ -20,18 +20,18 @@ def check_health() -> None:
     now = datetime.now(timezone.utc)
     try:
         check_database()
-        activity = get_llm_activity(now - timedelta(minutes=30))
+        activity = get_llm_activity(now - timedelta(minutes=2))
         successes = activity["successes"]
         failures = activity["failures"]
         if successes == 0 and failures == 0:
             llm_status = "unknown"
-            details = "No LLM requests observed in the last 30 minutes; no synthetic probe was run."
+            details = "No LLM requests observed in the last 2 minutes; no synthetic probe was run."
         elif failures:
             llm_status = "degraded"
-            details = "One or more LLM requests failed in the last 30 minutes."
+            details = "One or more LLM requests failed in the last 2 minutes."
         else:
             llm_status = "healthy"
-            details = "Observed LLM requests succeeded in the last 30 minutes."
+            details = "Observed LLM requests succeeded in the last 2 minutes."
         record_monitor_run(database_ok=True, llm_status=llm_status,
                            successes=successes, failures=failures, details=details)
         logger.info("Health check: database=healthy llm=%s successes=%d failures=%d",
@@ -49,11 +49,11 @@ def check_health() -> None:
 def main() -> None:
     initialize_database()
     scheduler = BlockingScheduler(timezone="UTC")
-    scheduler.add_job(check_health, trigger="cron", minute="*/30",
+    scheduler.add_job(check_health, trigger="cron", minute="*/2",
                       id="postgres_and_llm_health", replace_existing=True,
                       max_instances=1, coalesce=True)
     check_health()
-    logger.info("Starting health checks every 30 minutes")
+    logger.info("Starting health checks every 2 minutes")
     scheduler.start()
 
 
