@@ -1,0 +1,59 @@
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege: the job only reads the repo. Cloudflare access comes from the
+# two repository secrets below, not from GITHUB_TOKEN.
+permissions:
+  contents: read
+
+# Never run two deploys at once; a newer push waits for the running one.
+concurrency:
+  group: deploy-cloudflare
+  cancel-in-progress: false
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        env:
+          # Tests mock the network; this only lets the OpenAI client construct.
+          OPENAI_API_KEY: test-key-not-real
+        run: python -m unittest discover
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Worker dependencies (pinned in package-lock.json)
+        run: npm ci
+
+      - name: Type-check the Worker
+        run: npm run typecheck
+
+      # The runner has Docker, which wrangler uses to build the image from ./Dockerfile.
+      - name: Deploy Worker and container
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
