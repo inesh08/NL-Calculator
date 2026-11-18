@@ -36,6 +36,10 @@ Worker always talks to the one Durable Object named `singleton`.
    npx wrangler secret put DATABASE_URL
    npx wrangler secret put ZOROVAL_INGEST_KEY   # optional; empty/unset = tracing off
    ```
+   To make the production ingest key: run
+   `zoroval login --app-url https://app-preview.zoroval.com --name "NL-Calculator production" --env-file .env.production --replace`,
+   copy the key from `.env.production` into `npx wrangler secret put ZOROVAL_INGEST_KEY`, then
+   delete `.env.production`.
    The Worker passes these to the container explicitly when it starts it. If a required one
    is missing, requests get a 503 that names the missing secret. A secret changed later (for
    example a rotation) is applied automatically within about a minute: the next cron tick
@@ -43,8 +47,10 @@ Worker always talks to the one Durable Object named `singleton`.
    Optional, non-secret settings live in `wrangler.jsonc` `vars` and follow the same path:
    `ZOROVAL_ENVIRONMENT` (set to `production`) and `ZOROVAL_CAPTURE_CONTENT` (not set, so the
    SDK default applies and question/answer text IS sent to Zoroval; add
-   `"ZOROVAL_CAPTURE_CONTENT": "false"` and redeploy to stop sending text). Unset or empty
-   optional values are not passed to the container at all.
+   `"ZOROVAL_CAPTURE_CONTENT": "false"` and redeploy to stop sending text). `ZOROVAL_INGEST_URL`
+   selects the Zoroval ingest: `https://ingest-preview.zoroval.com` for a preview key (as set in
+   `wrangler.jsonc`), or removed for a production key, where the SDK default ingest is used.
+   Unset or empty optional values are not passed to the container at all.
    https://developers.cloudflare.com/workers/configuration/secrets/
 7. **Slack app:** turn **Socket Mode off**, then Event Subscriptions -> enable -> Request URL
    `https://<worker>.<your-subdomain>.workers.dev/slack/events` (it must show "Verified"),
