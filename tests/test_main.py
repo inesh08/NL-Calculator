@@ -60,6 +60,16 @@ class MainTests(unittest.TestCase):
         self.assertIn("Result: 2", output)
         save.assert_called_once()
 
+    def test_every_terminal_turn_joins_one_conversation(self):
+        clarification = Operation(outcome="clarification", message="Which one?", operation=None, a=None, b=None)
+        calculation = Operation(outcome="calculation", message="", operation="add", a=2.0, b=3.0)
+        with patch("main.zoroval.conversation", wraps=main.zoroval.conversation) as conversation:
+            self.run_main(["add two", "two and three"], [clarification, calculation], calculate_result=5)
+        ids = [call.args[0] for call in conversation.call_args_list]
+        self.assertEqual(len(ids), 2)
+        self.assertEqual(ids[0], ids[1])
+        self.assertTrue(ids[0].startswith("terminal-"))
+
 
 if __name__ == "__main__":
     unittest.main()

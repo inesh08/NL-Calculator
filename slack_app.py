@@ -34,6 +34,10 @@ from storage import initialize_database, save_exchange
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("nl_calculator.slack")
 
+import zoroval
+
+zoroval.init(service_name="nl-calculator-slack")  # reads ZOROVAL_INGEST_KEY; wraps OpenAI; never raises
+
 try:
     initialize_database()
 except Exception:
@@ -120,22 +124,27 @@ def _calculate_reply(event: dict) -> None:
             f"User's clarification: {text}"
         )
 
-    try:
-        operation = get_tracked_operation(text)
-        if operation.outcome == "out_of_scope":
-            reply = operation.message
-        elif operation.outcome == "clarification":
-            with _pending_lock:
-                _pending_clarifications[key] = (text, operation.message)
-            reply = operation.message + " Reply in this thread and mention me to clarify."
-        else:
-            result = calculate(operation)
-            reply = f"Result: {result}"
-    except ValueError as error:
-        reply = f"Unable to calculate: {error}"
-    except Exception:
-        logger.exception("Unable to process Slack calculation")
-        reply = "Unable to process the request right now. Please try again shortly."
+    # One Slack thread is one Zoroval conversation; each mention is one turn.
+    with zoroval.conversation(f"{channel}:{thread_ts}", user_id=user):
+        with zoroval.turn(input=visible_question) as turn:
+            try:
+                operation = get_tracked_operation(text)
+                if operation.outcome == "out_of_scope":
+                    reply = operation.message
+                elif operation.outcome == "clarification":
+                    with _pending_lock:
+                        _pending_clarifications[key] = (text, operation.message)
+                    reply = operation.message + " Reply in this thread and mention me to clarify."
+                else:
+                    result = calculate(operation)
+                    reply = f"Result: {result}"
+            except ValueError as error:
+                reply = f"Unable to calculate: {error}"
+            except Exception as error:
+                logger.exception("Unable to process Slack calculation")
+                reply = "Unable to process the request right now. Please try again shortly."
+                turn.set_error(error)
+            turn.set_output(reply)
 
     save_exchange(source="slack", conversation_id=f"{channel}:{thread_ts}",
                   source_event_id=source_event_id,
