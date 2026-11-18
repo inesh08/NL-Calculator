@@ -52,9 +52,6 @@ interface Env {
 	SLACK_SIGNING_SECRET?: string;
 	OPENAI_API_KEY?: string;
 	DATABASE_URL?: string;
-	ZOROVAL_INGEST_KEY?: string;
-	ZOROVAL_CAPTURE_CONTENT?: string;
-	ZOROVAL_ENVIRONMENT?: string;
 }
 
 /** True if the promise settles within ms; false on timeout. Never throws. */

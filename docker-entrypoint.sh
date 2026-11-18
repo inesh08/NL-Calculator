@@ -9,11 +9,8 @@ PORT="${PORT:-8080}"
 
 # ONE worker on purpose: event de-duplication and pending clarifications live in
 # this process's memory, and one thread drains the event queue. Threads are fine.
-# Do NOT add --preload: the Zoroval SDK initialises at import time and skips its
-# exit flush in forked children, so queued traces would be lost on shutdown.
-# Without preload, init runs inside the worker and gunicorn's graceful SIGTERM
-# exit flushes (--graceful-timeout leaves room for that; Cloudflare waits up to
-# 15 minutes after SIGTERM before SIGKILL).
+# No --preload: it is not needed with one worker, and it would start the queue thread in
+# the master process, which a forked worker does not inherit.
 gunicorn slack_app:app \
   --workers 1 --threads 4 \
   --bind "0.0.0.0:${PORT}" \

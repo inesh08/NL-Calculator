@@ -3,20 +3,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import logging
-import os
-
-import tracing
-
-# The terminal app keeps its output quiet, but shows the one-line Zoroval tracing status.
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "WARNING"))
-logging.getLogger("nl_calculator.tracing").setLevel(logging.INFO)
-tracing.setup()
-
 from calculator import calculate
 from interactions import get_tracked_operation
 from storage import initialize_database, save_exchange
 import uuid
+import logging
 
 logger = logging.getLogger("nl_calculator.terminal")
 
@@ -32,9 +23,7 @@ def main():
 
     while True:
         try:
-            with tracing.turn(conversation_id, visible_question) as traced:
-                operation = get_tracked_operation(question)
-                traced.set_output(operation.message or operation.model_dump_json())
+            operation = get_tracked_operation(question)
 
             if operation.outcome == "out_of_scope":
                 print(operation.message)
