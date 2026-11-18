@@ -36,7 +36,7 @@ logger = logging.getLogger("nl_calculator.slack")
 
 import zoroval
 
-zoroval.init()  # reads ZOROVAL_INGEST_KEY; wraps OpenAI; never raises
+zoroval.init(service_name="nl-calculator-slack")  # reads ZOROVAL_INGEST_KEY; wraps OpenAI; never raises
 
 try:
     initialize_database()
@@ -140,9 +140,10 @@ def _calculate_reply(event: dict) -> None:
                     reply = f"Result: {result}"
             except ValueError as error:
                 reply = f"Unable to calculate: {error}"
-            except Exception:
+            except Exception as error:
                 logger.exception("Unable to process Slack calculation")
                 reply = "Unable to process the request right now. Please try again shortly."
+                turn.set_error(error)
             turn.set_output(reply)
 
     save_exchange(source="slack", conversation_id=f"{channel}:{thread_ts}",

@@ -115,6 +115,21 @@ class SlackHelperTests(unittest.TestCase):
         self.assertEqual(tracked.call_args.args[0], "Original request: ambiguous\nClarification question: Which one?\nUser's clarification: second option")
         self.assertEqual(save.call_args.kwargs["question"], "second option")
 
+    def test_mention_and_its_clarification_reply_join_one_conversation(self):
+        first = {"channel": "C1", "user": "U1", "text": "ambiguous", "ts": "200"}
+        reply = {"channel": "C1", "user": "U1", "text": "second option", "ts": "201", "thread_ts": "200"}
+        clarification = Operation(outcome="clarification", message="Which one?", operation=None, a=None, b=None)
+        final = Operation(outcome="out_of_scope", message="No calculation.", operation=None, a=None, b=None)
+        with patch.object(slack_app_module.zoroval, "conversation", wraps=slack_app_module.zoroval.conversation) as conversation, \
+             patch.object(slack_app_module, "get_tracked_operation", side_effect=[clarification, final]), \
+             patch.object(slack_app_module, "save_exchange") as save, \
+             patch.object(slack_app_module, "_post_message"):
+            slack_app_module._calculate_reply(first)
+            slack_app_module._calculate_reply(reply)
+        ids = [call.args[0] for call in conversation.call_args_list]
+        self.assertEqual(ids, ["C1:200", "C1:200"])
+        self.assertEqual(save.call_args.kwargs["conversation_id"], "C1:200")
+
     def test_calculate_reply_handles_bad_events_empty_text_and_errors(self):
         with patch.object(slack_app_module, "_post_message") as post:
             slack_app_module._calculate_reply({"channel": "C1"})
