@@ -23,6 +23,14 @@ test("optional values that are unset or blank are omitted, never sent as empty",
 	assert.equal(env.LOG_LEVEL, "INFO");
 });
 
+test("values are forwarded trimmed, so a pasted space or newline cannot break the URL", () => {
+	const env = buildContainerEnv(
+		{ ...secrets, ZOROVAL_INGEST_URL: " https://ingest-preview.zoroval.com\n" },
+		8080,
+	);
+	assert.equal(env.ZOROVAL_INGEST_URL, "https://ingest-preview.zoroval.com");
+});
+
 test("privacy and environment switches are forwarded when set", () => {
 	const env = buildContainerEnv(
 		{

@@ -55,6 +55,7 @@ interface Env {
 	ZOROVAL_INGEST_KEY?: string;
 	ZOROVAL_CAPTURE_CONTENT?: string;
 	ZOROVAL_ENVIRONMENT?: string;
+	ZOROVAL_INGEST_URL?: string;
 }
 
 /** True if the promise settles within ms; false on timeout. Never throws. */

@@ -36,20 +36,28 @@ Worker always talks to the one Durable Object named `singleton`.
    npx wrangler secret put DATABASE_URL
    npx wrangler secret put ZOROVAL_INGEST_KEY   # optional; empty/unset = tracing off
    ```
-   To make the production ingest key: run
-   `zoroval login --app-url https://app-preview.zoroval.com --name "NL-Calculator production" --env-file .env.production --replace`,
+   To make the deploy key (from Zoroval preview): run
+   `zoroval login --app-url https://app-preview.zoroval.com --name "NL-Calculator deploy" --env-file .env.production --replace`,
    copy the key from `.env.production` into `npx wrangler secret put ZOROVAL_INGEST_KEY`, then
-   delete `.env.production`.
+   delete `.env.production`. This key only works with the preview ingest, so keep
+   `ZOROVAL_INGEST_URL` set to `https://ingest-preview.zoroval.com` (step below).
    The Worker passes these to the container explicitly when it starts it. If a required one
    is missing, requests get a 503 that names the missing secret. A secret changed later (for
    example a rotation) is applied automatically within about a minute: the next cron tick
    notices the change and restarts the container (see "How it behaves").
    Optional, non-secret settings live in `wrangler.jsonc` `vars` and follow the same path:
-   `ZOROVAL_ENVIRONMENT` (set to `production`) and `ZOROVAL_CAPTURE_CONTENT` (not set, so the
+   `ZOROVAL_ENVIRONMENT` (set to `cloudflare`) and `ZOROVAL_CAPTURE_CONTENT` (not set, so the
    SDK default applies and question/answer text IS sent to Zoroval; add
-   `"ZOROVAL_CAPTURE_CONTENT": "false"` and redeploy to stop sending text). `ZOROVAL_INGEST_URL`
-   selects the Zoroval ingest: `https://ingest-preview.zoroval.com` for a preview key (as set in
-   `wrangler.jsonc`), or removed for a production key, where the SDK default ingest is used.
+   `"ZOROVAL_CAPTURE_CONTENT": "false"` and redeploy to stop sending text).
+   `ZOROVAL_ENVIRONMENT` is only a label on the traces saying which deployment sent them; it does
+   not choose which Zoroval environment receives them.
+   `ZOROVAL_INGEST_KEY` and `ZOROVAL_INGEST_URL` are one pair; set them together:
+   - a key made on `app-preview.zoroval.com` needs `https://ingest-preview.zoroval.com` (as set in
+     `wrangler.jsonc`);
+   - a key made on `app.zoroval.com` needs `ZOROVAL_INGEST_URL` removed from `wrangler.jsonc`, so
+     the SDK default ingest is used.
+   On a mismatch the ingest rejects the key. The SDK logs once and stops sending traces for that
+   process, while the bot keeps replying, so the failure is silent in Slack.
    Unset or empty optional values are not passed to the container at all.
    https://developers.cloudflare.com/workers/configuration/secrets/
 7. **Slack app:** turn **Socket Mode off**, then Event Subscriptions -> enable -> Request URL

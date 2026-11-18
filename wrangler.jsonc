@@ -10,11 +10,15 @@
   // ZOROVAL_CAPTURE_CONTENT is deliberately not set: unset = the SDK default (question
   // and answer text IS sent to Zoroval). Add "ZOROVAL_CAPTURE_CONTENT": "false" below to
   // stop sending text. Changing a var restarts the container within a minute.
-  // ZOROVAL_INGEST_URL must match the environment the ingest key was made in: a preview
-  // key needs the preview ingest (as here). For a production key, remove this line.
+  // ZOROVAL_INGEST_KEY and ZOROVAL_INGEST_URL are one pair. A key made on
+  // app-preview.zoroval.com needs the preview ingest (as here). A key made on app.zoroval.com
+  // needs this line removed (SDK default ingest). A mismatch: the ingest rejects the key, the
+  // SDK logs once and stops sending traces for that process, and the bot keeps replying.
+  // ZOROVAL_ENVIRONMENT is only a label on the traces (which deployment sent them); it does
+  // not choose which Zoroval environment receives them. That is the ingest URL's job.
   "vars": {
     "LOG_LEVEL": "INFO",
-    "ZOROVAL_ENVIRONMENT": "production",
+    "ZOROVAL_ENVIRONMENT": "cloudflare",
     "ZOROVAL_INGEST_URL": "https://ingest-preview.zoroval.com"
   },
 
