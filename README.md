@@ -41,6 +41,31 @@ The current `Operation` model in `prompt.py` does not yet define those fields,
 so the dataset is a target contract and cannot be consumed directly by the
 current model schema without aligning that schema first.
 
+## Zoroval tracing
+
+Optional. When `ZOROVAL_INGEST_KEY` is set, each LLM call is sent to Zoroval as part
+of a conversation: one Slack thread (or one terminal session) is one conversation, and
+each mention or clarification reply is one turn. With the key unset, tracing is off and
+the app behaves exactly as before; the startup log says "Zoroval tracing is on" or "off".
+
+1. `python -m pip install -r requirements.txt`
+2. `zoroval login` opens the browser, you approve, and the key is written to the
+   git-ignored `.env`.
+3. `zoroval doctor` checks that a trace arrived (run the app once first).
+
+What is sent: the question, the model's answer, model name, token usage, timings and
+errors, plus the Slack user id on Slack turns. To drop the text and keep only usage and
+timings, set `ZOROVAL_CAPTURE_CONTENT=false`. Export runs on a background thread with a
+small bounded queue, so a slow or dropped connection never delays a reply.
+
+Rollback: remove `tracing.py`, the `tracing` lines in `main.py` and `slack_app.py`, and
+the `zoroval` line in `requirements.txt`, then run `zoroval logout`.
+
+Production: the developer creates a separate key with
+`zoroval login --name "NL-Calculator production" --env-file .env.production --replace`,
+approves it in the browser, copies the value into the host's secret settings as
+`ZOROVAL_INGEST_KEY`, and deletes that file. Do not reuse the development key.
+
 ## Slack integration
 
 The Slack adapter is in `slack_app.py`. Users mention the bot with a calculation

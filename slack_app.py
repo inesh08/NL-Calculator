@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import tracing
 from flask import Flask, jsonify, request
 from slack_bolt import App as SlackApp
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -33,6 +34,8 @@ from storage import initialize_database, save_exchange
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("nl_calculator.slack")
+
+tracing.setup()
 
 try:
     initialize_database()
@@ -120,24 +123,28 @@ def _calculate_reply(event: dict) -> None:
             f"User's clarification: {text}"
         )
 
-    try:
-        operation = get_tracked_operation(text)
-        if operation.outcome == "out_of_scope":
-            reply = operation.message
-        elif operation.outcome == "clarification":
-            with _pending_lock:
-                _pending_clarifications[key] = (text, operation.message)
-            reply = operation.message + " Reply in this thread and mention me to clarify."
-        else:
-            result = calculate(operation)
-            reply = f"Result: {result}"
-    except ValueError as error:
-        reply = f"Unable to calculate: {error}"
-    except Exception:
-        logger.exception("Unable to process Slack calculation")
-        reply = "Unable to process the request right now. Please try again shortly."
+    conversation_id = f"{channel}:{thread_ts}"
+    with tracing.turn(conversation_id, visible_question, user_id=user) as traced:
+        try:
+            operation = get_tracked_operation(text)
+            if operation.outcome == "out_of_scope":
+                reply = operation.message
+            elif operation.outcome == "clarification":
+                with _pending_lock:
+                    _pending_clarifications[key] = (text, operation.message)
+                reply = operation.message + " Reply in this thread and mention me to clarify."
+            else:
+                result = calculate(operation)
+                reply = f"Result: {result}"
+        except ValueError as error:
+            reply = f"Unable to calculate: {error}"
+        except Exception:
+            logger.exception("Unable to process Slack calculation")
+            reply = "Unable to process the request right now. Please try again shortly."
 
-    save_exchange(source="slack", conversation_id=f"{channel}:{thread_ts}",
+        traced.set_output(reply)
+
+    save_exchange(source="slack", conversation_id=conversation_id,
                   source_event_id=source_event_id,
                   question=visible_question, answer=reply)
     _post_message(channel, reply, thread_ts)
