@@ -4,14 +4,26 @@
 //   1. fetch():      only /slack/events and /health are forwarded; all else is 404.
 //   2. The Durable Object NlCalculatorContainer owns the ONE container (the app
 //      keeps dedupe and clarification state in memory, so exactly one instance).
-//   3. Before forwarding it makes sure the container is running and healthy.
-//      If that cannot be done, it answers 503 with a reason. Slack retries and
-//      the app de-duplicates by event_id.
-//   4. scheduled(): a cron pings /health every minute so the container stays
-//      awake for its 2-minute monitor.
+//   3. Before forwarding it makes sure the container is running, current and
+//      healthy. If that cannot be done, it answers 503 with a reason. Slack
+//      retries and the app de-duplicates by event_id.
+//   4. "Current" means: the container runs the newest image AND was started with
+//      the same environment (a SHA-256 fingerprint stored at start; never the
+//      values). If either differs, the container is stopped gracefully (SIGTERM,
+//      wait up to 30 s so queued events and traces drain, destroy() only as a
+//      fallback). While that swap runs, requests get a 503 "restarting" at once.
+//      The next request or cron tick starts the new one.
+//   5. scheduled(): a cron pings /health every minute so the container stays
+//      awake for its 2-minute monitor, and so a deploy or a rotated secret is
+//      applied within a minute.
 //
 // Docs: https://developers.cloudflare.com/containers/api/durable-object-container/
 import { DurableObject } from "cloudflare:workers";
+import {
+	buildContainerEnv,
+	fingerprintEnv,
+	missingSecrets,
+} from "./config.ts";
 
 const PORT = 8080;
 const INSTANCE_NAME = "singleton";
@@ -24,14 +36,14 @@ const FORWARD_TIMEOUT_MS = 20_000;
 // After a failed start, answer 503 immediately for this long instead of retrying.
 const FAILURE_COOLDOWN_MS = 30_000;
 
-const REQUIRED_SECRETS = [
-	"SLACK_BOT_TOKEN",
-	"SLACK_SIGNING_SECRET",
-	"OPENAI_API_KEY",
-	"DATABASE_URL",
-] as const;
-// Optional: empty/missing means Zoroval tracing is off.
-const OPTIONAL_SECRETS = ["ZOROVAL_INGEST_KEY"] as const;
+// SIGTERM, then wait this long for the app to exit: gunicorn --graceful-timeout 20 s
+// plus the 3 s trace flush, plus margin. Only after this does destroy() run.
+const GRACEFUL_STOP_MS = 30_000;
+const SIGTERM = 15;
+// After destroy(), wait this long for monitor() to settle before giving up on it.
+const POST_DESTROY_WAIT_MS = 5_000;
+// Durable Object storage key holding the SHA-256 of the env the container started with.
+const ENV_FINGERPRINT_KEY = "containerEnvFingerprint";
 
 interface Env {
 	NL_CALCULATOR: DurableObjectNamespace<NlCalculatorContainer>;
@@ -41,6 +53,26 @@ interface Env {
 	OPENAI_API_KEY?: string;
 	DATABASE_URL?: string;
 	ZOROVAL_INGEST_KEY?: string;
+	ZOROVAL_CAPTURE_CONTENT?: string;
+	ZOROVAL_ENVIRONMENT?: string;
+}
+
+/** True if the promise settles within ms; false on timeout. Never throws. */
+async function settlesWithin(promise: Promise<unknown> | undefined, ms: number): Promise<boolean> {
+	if (!promise) return true;
+	let timer: number | null = null;
+	const timeout = new Promise<false>((resolve) => {
+		timer = setTimeout(() => resolve(false), ms);
+	});
+	const settled = promise.then(
+		() => true as const,
+		() => true as const,
+	);
+	try {
+		return await Promise.race([settled, timeout]);
+	} finally {
+		clearTimeout(timer);
+	}
 }
 
 function unavailable(status: number, reason: string, message: string): Response {
@@ -53,6 +85,8 @@ function unavailable(status: number, reason: string, message: string): Response 
 export class NlCalculatorContainer extends DurableObject<Env> {
 	private starting: Promise<Response | null> | undefined;
 	private monitoring: Promise<void> | undefined;
+	// Set while the running container is being stopped for a restart. One at a time.
+	private swap: Promise<void> | undefined;
 	private failure: { at: number; reason: string; message: string } | undefined;
 
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -81,14 +115,19 @@ export class NlCalculatorContainer extends DurableObject<Env> {
 	/** Returns null when the container is ready, or a 503 response saying why. */
 	private async ensureReady(): Promise<Response | null> {
 		const container = this.ctx.container!;
-		await this.replaceOutdatedContainer();
+		if (this.swap) return this.restarting();
+		const staleReason = container.running ? await this.staleReason() : undefined;
+		if (staleReason) {
+			this.beginSwap(staleReason);
+			return this.restarting();
+		}
 		if (container.running && (await this.healthy())) return null;
 
 		if (this.failure && Date.now() - this.failure.at < FAILURE_COOLDOWN_MS) {
 			return unavailable(503, this.failure.reason, this.failure.message);
 		}
 
-		const missing = REQUIRED_SECRETS.filter((name) => !this.env[name]);
+		const missing = missingSecrets(this.env);
 		if (missing.length > 0) {
 			return this.fail(
 				"missing_secrets",
@@ -98,12 +137,15 @@ export class NlCalculatorContainer extends DurableObject<Env> {
 
 		try {
 			if (!container.running) {
+				const env = this.containerEnv();
+				// Record before starting: a fingerprint without a running container is harmless.
+				await this.ctx.storage.put(ENV_FINGERPRINT_KEY, await fingerprintEnv(env));
 				container.start({
 					image: container.images.base,
 					instance: "basic",
 					// Slack, OpenAI and Postgres are all outbound internet calls.
 					enableInternet: true,
-					env: this.containerEnv(),
+					env,
 				});
 			}
 			this.observeExit();
@@ -128,21 +170,73 @@ export class NlCalculatorContainer extends DurableObject<Env> {
 	}
 
 	/**
-	 * With the durable_object policy a deploy does NOT restart a running container.
-	 * Because the cron keeps it awake, it would never pick up a new image on its
-	 * own, so stop it here and let ensureReady start the new image.
-	 * Docs: https://developers.cloudflare.com/containers/guides/image-management/
+	 * Why the running container must be replaced, or undefined if it is current.
+	 * 1. Image: with the durable_object policy a deploy does NOT restart a running
+	 *    container, and the cron keeps it awake, so it would never pick up a new image.
+	 *    Docs: https://developers.cloudflare.com/containers/guides/image-management/
+	 * 2. Environment: env is read only at start(), so a rotated secret or changed var
+	 *    needs a restart. Compared by SHA-256 fingerprint, never by value.
 	 */
-	private async replaceOutdatedContainer(): Promise<void> {
+	private async staleReason(): Promise<string | undefined> {
 		const container = this.ctx.container!;
-		if (!container.running) return;
 		const info = await container.inspect();
 		// An empty image means "still starting"; never replace in that case.
 		if (info && info.image !== "" && info.image !== container.images.base) {
-			console.warn("Container image is outdated after a deploy; restarting it on the new image");
-			await container.destroy();
-			await this.monitoring;
+			return "Container image is outdated after a deploy; restarting container on the new image";
 		}
+		const current = await fingerprintEnv(this.containerEnv());
+		const recorded = await this.ctx.storage.get<string>(ENV_FINGERPRINT_KEY);
+		if (recorded === undefined) {
+			return "configuration not recorded for the running container; restarting container once";
+		}
+		if (recorded !== current) return "configuration changed; restarting container";
+		return undefined;
+	}
+
+	/** Starts the one graceful stop in the background; callers get a 503 meanwhile. */
+	private beginSwap(reason: string): void {
+		console.warn(reason);
+		this.swap = this.stopGracefully()
+			.catch((error: unknown) => console.error("Stopping the container failed:", error))
+			.finally(() => {
+				this.swap = undefined;
+			});
+		this.ctx.waitUntil(this.swap);
+	}
+
+	/**
+	 * SIGTERM, wait for exit (bounded), then destroy() only as a fallback.
+	 * Docs: https://developers.cloudflare.com/containers/api/durable-object-container/
+	 * (Container.signal(signo), Container.monitor(), Container.destroy()).
+	 */
+	private async stopGracefully(): Promise<void> {
+		const container = this.ctx.container!;
+		this.observeExit();
+		const exited = this.monitoring;
+		let exitedInTime = false;
+		try {
+			container.signal(SIGTERM);
+			exitedInTime = await settlesWithin(exited, GRACEFUL_STOP_MS);
+		} catch (error) {
+			console.error("Could not send SIGTERM to the container:", error);
+		}
+		if (exitedInTime) {
+			console.warn("Container stopped gracefully after SIGTERM");
+			return;
+		}
+		console.error(
+			`Container did not exit within ${GRACEFUL_STOP_MS / 1000}s of SIGTERM; destroying it (queued work may be lost)`,
+		);
+		await container.destroy();
+		await settlesWithin(exited, POST_DESTROY_WAIT_MS);
+	}
+
+	private restarting(): Response {
+		return unavailable(
+			503,
+			"restarting",
+			"The container is restarting to apply a new version or configuration. Slack will retry.",
+		);
 	}
 
 	private async healthy(): Promise<boolean> {
@@ -189,11 +283,7 @@ export class NlCalculatorContainer extends DurableObject<Env> {
 	}
 
 	private containerEnv(): Record<string, string> {
-		const env: Record<string, string> = { PORT: String(PORT), LOG_LEVEL: this.env.LOG_LEVEL ?? "INFO" };
-		for (const name of [...REQUIRED_SECRETS, ...OPTIONAL_SECRETS]) {
-			env[name] = this.env[name] ?? "";
-		}
-		return env;
+		return buildContainerEnv(this.env, PORT);
 	}
 
 	private observeExit(): void {

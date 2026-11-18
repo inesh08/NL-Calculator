@@ -37,8 +37,14 @@ Worker always talks to the one Durable Object named `singleton`.
    npx wrangler secret put ZOROVAL_INGEST_KEY   # optional; empty/unset = tracing off
    ```
    The Worker passes these to the container explicitly when it starts it. If a required one
-   is missing, requests get a 503 that names the missing secret. A secret changed later only
-   reaches the container when it next starts (see "Rollback and restarts").
+   is missing, requests get a 503 that names the missing secret. A secret changed later (for
+   example a rotation) is applied automatically within about a minute: the next cron tick
+   notices the change and restarts the container (see "How it behaves").
+   Optional, non-secret settings live in `wrangler.jsonc` `vars` and follow the same path:
+   `ZOROVAL_ENVIRONMENT` (set to `production`) and `ZOROVAL_CAPTURE_CONTENT` (not set, so the
+   SDK default applies and question/answer text IS sent to Zoroval; add
+   `"ZOROVAL_CAPTURE_CONTENT": "false"` and redeploy to stop sending text). Unset or empty
+   optional values are not passed to the container at all.
    https://developers.cloudflare.com/workers/configuration/secrets/
 7. **Slack app:** turn **Socket Mode off**, then Event Subscriptions -> enable -> Request URL
    `https://<worker>.<your-subdomain>.workers.dev/slack/events` (it must show "Verified"),
@@ -75,6 +81,19 @@ Worker always talks to the one Durable Object named `singleton`.
   running container, and the cron keeps it from ever sleeping. The Durable Object therefore
   compares the running image with the new one on every request and restarts it if they
   differ. https://developers.cloudflare.com/containers/guides/image-management/
+- **Graceful swap.** The restart is not a hard kill. The Worker sends SIGTERM
+  (`container.signal(15)`) so gunicorn drains its queue (`--graceful-timeout 20`) and the
+  Zoroval SDK flushes traces, waits up to 30 s for the container to exit, and calls
+  `destroy()` (immediate stop, work lost) only if it has not exited by then. Both outcomes
+  are logged once. While the swap runs, requests get a 503 with `reason: "restarting"` at
+  once (Slack retries; the app de-duplicates); the next request or cron tick starts the new
+  container. Concurrent requests share one swap.
+- **Changed secrets and vars.** At start the Worker stores a SHA-256 fingerprint of the
+  environment it passed to the container (in Durable Object storage; never the values). On
+  every request and cron tick it compares the current environment with it; if it differs it
+  logs "configuration changed; restarting container" (no values) and does the same graceful
+  swap. After `wrangler secret put` the change takes effect within about a minute. The first
+  deploy of this version restarts the container once, because no fingerprint was recorded yet.
 
 ## Deploy options: GitHub Actions (recommended) vs Workers Builds
 
@@ -112,8 +131,9 @@ https://developers.cloudflare.com/containers/platform/pricing/
   mechanism as a deploy. If you deleted the old image (`wrangler containers images delete`),
   rolling back to it will not work. Images live in Cloudflare's registry (50 GB per account).
   https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/
-- Force a restart (for example after changing a secret): redeploy, or roll back and forward.
-  Not retrying forever: a restart happens at most when a request or the 1-minute cron arrives.
+- A changed secret or var restarts the container by itself (see "Changed secrets and vars").
+  To force a restart anyway, change any var or secret value, or deploy new code. Not retrying
+  forever: a restart is only considered when a request or the 1-minute cron arrives.
 - Stop spending: delete the Cron Trigger (remove `triggers` and redeploy); the container
   sleeps after 10 idle minutes.
 
