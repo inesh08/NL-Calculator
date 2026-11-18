@@ -20,6 +20,12 @@ test("LOG_LEVEL is forwarded when set", () => {
 	assert.equal(buildContainerEnv({ ...secrets, LOG_LEVEL: "DEBUG" }, 8080).LOG_LEVEL, "DEBUG");
 });
 
+test("values are forwarded trimmed, so a pasted space or newline is never sent", () => {
+	const env = buildContainerEnv({ ...secrets, OPENAI_API_KEY: " value\n", LOG_LEVEL: " DEBUG " }, 8080);
+	assert.equal(env.OPENAI_API_KEY, "value");
+	assert.equal(env.LOG_LEVEL, "DEBUG");
+});
+
 test("blank required secrets are omitted from the container environment", () => {
 	const env = buildContainerEnv({ ...secrets, DATABASE_URL: " " }, 8080);
 	assert.equal("DATABASE_URL" in env, false);

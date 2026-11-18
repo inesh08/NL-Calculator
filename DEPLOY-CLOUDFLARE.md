@@ -35,7 +35,8 @@ Worker always talks to the one Durable Object named `singleton`.
    npx wrangler secret put OPENAI_API_KEY
    npx wrangler secret put DATABASE_URL
    ```
-   The Worker passes these to the container explicitly when it starts it. If a required one
+   The Worker passes these to the container explicitly when it starts it. Leading and trailing
+   whitespace (for example a pasted newline) is trimmed first. If a required one
    is missing, requests get a 503 that names the missing secret. A secret changed later (for
    example a rotation) is applied automatically within about a minute: the next cron tick
    notices the change and restarts the container (see "How it behaves").

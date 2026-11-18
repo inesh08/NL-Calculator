@@ -15,8 +15,11 @@ function get(env: RawEnv, name: string): string | undefined {
 	return nonEmpty((env as Record<string, unknown>)[name]);
 }
 
+/** Trimmed value, or undefined when unset or blank. Whitespace from a paste is never forwarded. */
 function nonEmpty(value: unknown): string | undefined {
-	return typeof value === "string" && value.trim() !== "" ? value : undefined;
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed === "" ? undefined : trimmed;
 }
 
 /** Names of required secrets that are unset or blank. */
