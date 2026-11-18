@@ -12,7 +12,12 @@ export const REQUIRED_SECRETS = [
 export const OPTIONAL_SECRETS = ["ZOROVAL_INGEST_KEY"] as const;
 // Optional plain config (wrangler.jsonc `vars`), forwarded only when set.
 // ZOROVAL_CAPTURE_CONTENT=false stops question/answer text being sent to Zoroval.
-export const OPTIONAL_VARS = ["ZOROVAL_CAPTURE_CONTENT", "ZOROVAL_ENVIRONMENT"] as const;
+// ZOROVAL_INGEST_URL selects the Zoroval ingest (unset = SDK default production ingest).
+export const OPTIONAL_VARS = [
+	"ZOROVAL_CAPTURE_CONTENT",
+	"ZOROVAL_ENVIRONMENT",
+	"ZOROVAL_INGEST_URL",
+] as const;
 
 export type RawEnv = object;
 

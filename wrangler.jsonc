@@ -10,7 +10,13 @@
   // ZOROVAL_CAPTURE_CONTENT is deliberately not set: unset = the SDK default (question
   // and answer text IS sent to Zoroval). Add "ZOROVAL_CAPTURE_CONTENT": "false" below to
   // stop sending text. Changing a var restarts the container within a minute.
-  "vars": { "LOG_LEVEL": "INFO", "ZOROVAL_ENVIRONMENT": "production" },
+  // ZOROVAL_INGEST_URL must match the environment the ingest key was made in: a preview
+  // key needs the preview ingest (as here). For a production key, remove this line.
+  "vars": {
+    "LOG_LEVEL": "INFO",
+    "ZOROVAL_ENVIRONMENT": "production",
+    "ZOROVAL_INGEST_URL": "https://ingest-preview.zoroval.com"
+  },
 
   // Keeps the container warm for the 2-minute monitor.
   "triggers": { "crons": ["* * * * *"] },

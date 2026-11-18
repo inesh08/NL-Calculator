@@ -11,21 +11,32 @@ const secrets = {
 };
 
 test("optional values that are unset or blank are omitted, never sent as empty", () => {
-	const env = buildContainerEnv({ ...secrets, ZOROVAL_INGEST_KEY: "", ZOROVAL_ENVIRONMENT: "  " }, 8080);
+	const env = buildContainerEnv(
+		{ ...secrets, ZOROVAL_INGEST_KEY: "", ZOROVAL_ENVIRONMENT: "  ", ZOROVAL_INGEST_URL: "" },
+		8080,
+	);
 	assert.equal("ZOROVAL_INGEST_KEY" in env, false);
 	assert.equal("ZOROVAL_ENVIRONMENT" in env, false);
 	assert.equal("ZOROVAL_CAPTURE_CONTENT" in env, false);
+	assert.equal("ZOROVAL_INGEST_URL" in env, false);
 	assert.equal(env.PORT, "8080");
 	assert.equal(env.LOG_LEVEL, "INFO");
 });
 
 test("privacy and environment switches are forwarded when set", () => {
 	const env = buildContainerEnv(
-		{ ...secrets, ZOROVAL_CAPTURE_CONTENT: "false", ZOROVAL_ENVIRONMENT: "production", LOG_LEVEL: "DEBUG" },
+		{
+			...secrets,
+			ZOROVAL_CAPTURE_CONTENT: "false",
+			ZOROVAL_ENVIRONMENT: "production",
+			ZOROVAL_INGEST_URL: "https://ingest-preview.zoroval.com",
+			LOG_LEVEL: "DEBUG",
+		},
 		8080,
 	);
 	assert.equal(env.ZOROVAL_CAPTURE_CONTENT, "false");
 	assert.equal(env.ZOROVAL_ENVIRONMENT, "production");
+	assert.equal(env.ZOROVAL_INGEST_URL, "https://ingest-preview.zoroval.com");
 	assert.equal(env.LOG_LEVEL, "DEBUG");
 });
 
