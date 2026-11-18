@@ -34,23 +34,13 @@ Worker always talks to the one Durable Object named `singleton`.
    npx wrangler secret put SLACK_SIGNING_SECRET
    npx wrangler secret put OPENAI_API_KEY
    npx wrangler secret put DATABASE_URL
-   npx wrangler secret put ZOROVAL_INGEST_KEY   # optional; empty/unset = tracing off
    ```
-   To make the production ingest key: run
-   `zoroval login --app-url https://app-preview.zoroval.com --name "NL-Calculator production" --env-file .env.production --replace`,
-   copy the key from `.env.production` into `npx wrangler secret put ZOROVAL_INGEST_KEY`, then
-   delete `.env.production`.
    The Worker passes these to the container explicitly when it starts it. If a required one
    is missing, requests get a 503 that names the missing secret. A secret changed later (for
    example a rotation) is applied automatically within about a minute: the next cron tick
    notices the change and restarts the container (see "How it behaves").
-   Optional, non-secret settings live in `wrangler.jsonc` `vars` and follow the same path:
-   `ZOROVAL_ENVIRONMENT` (set to `production`) and `ZOROVAL_CAPTURE_CONTENT` (not set, so the
-   SDK default applies and question/answer text IS sent to Zoroval; add
-   `"ZOROVAL_CAPTURE_CONTENT": "false"` and redeploy to stop sending text). `ZOROVAL_INGEST_URL`
-   selects the Zoroval ingest: `https://ingest-preview.zoroval.com` for a preview key (as set in
-   `wrangler.jsonc`), or removed for a production key, where the SDK default ingest is used.
-   Unset or empty optional values are not passed to the container at all.
+   Non-secret settings live in `wrangler.jsonc` `vars` (`LOG_LEVEL`) and follow the same path.
+   A blank or unset `LOG_LEVEL` is not passed to the container; the Worker uses `INFO`.
    https://developers.cloudflare.com/workers/configuration/secrets/
 7. **Slack app:** turn **Socket Mode off**, then Event Subscriptions -> enable -> Request URL
    `https://<worker>.<your-subdomain>.workers.dev/slack/events` (it must show "Verified"),
@@ -79,17 +69,17 @@ Worker always talks to the one Durable Object named `singleton`.
   exits non-zero; the Worker logs it and starts a fresh container on the next request or cron.
   In-memory state (dedupe, clarifications) is lost on every restart; that is inherent to the
   current app design.
-- **No `--preload`.** The Zoroval SDK initialises at import time and skips its exit flush in
-  forked children, so with preload queued traces would be lost on shutdown. Without it, init
-  runs in the worker and gunicorn's graceful SIGTERM exit flushes. `--graceful-timeout 20`
-  leaves room; Cloudflare waits up to 15 minutes after SIGTERM before SIGKILL.
+- **One worker, no `--preload`.** Event de-duplication and pending clarifications live in
+  the process's memory and one thread drains the event queue, so there must be exactly one
+  gunicorn worker. Preload is not needed, and it would start the queue thread in the master
+  process, which a forked worker does not inherit.
 - **New deploys.** With the `durable_object` scheduling policy a deploy does not restart a
   running container, and the cron keeps it from ever sleeping. The Durable Object therefore
   compares the running image with the new one on every request and restarts it if they
   differ. https://developers.cloudflare.com/containers/guides/image-management/
 - **Graceful swap.** The restart is not a hard kill. The Worker sends SIGTERM
-  (`container.signal(15)`) so gunicorn drains its queue (`--graceful-timeout 20`) and the
-  Zoroval SDK flushes traces, waits up to 30 s for the container to exit, and calls
+  (`container.signal(15)`) so gunicorn drains its queue (`--graceful-timeout 20`),
+  waits up to 30 s for the container to exit, and calls
   `destroy()` (immediate stop, work lost) only if it has not exited by then. Both outcomes
   are logged once. While the swap runs, requests get a 503 with `reason: "restarting"` at
   once (Slack retries; the app de-duplicates); the next request or cron tick starts the new

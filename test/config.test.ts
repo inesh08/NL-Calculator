@@ -10,34 +10,20 @@ const secrets = {
 	DATABASE_URL: "d",
 };
 
-test("optional values that are unset or blank are omitted, never sent as empty", () => {
-	const env = buildContainerEnv(
-		{ ...secrets, ZOROVAL_INGEST_KEY: "", ZOROVAL_ENVIRONMENT: "  ", ZOROVAL_INGEST_URL: "" },
-		8080,
-	);
-	assert.equal("ZOROVAL_INGEST_KEY" in env, false);
-	assert.equal("ZOROVAL_ENVIRONMENT" in env, false);
-	assert.equal("ZOROVAL_CAPTURE_CONTENT" in env, false);
-	assert.equal("ZOROVAL_INGEST_URL" in env, false);
-	assert.equal(env.PORT, "8080");
+test("a blank or whitespace-only LOG_LEVEL falls back to the default, never sent as empty", () => {
+	const env = buildContainerEnv({ ...secrets, LOG_LEVEL: "  " }, 8080);
 	assert.equal(env.LOG_LEVEL, "INFO");
+	assert.equal(env.PORT, "8080");
 });
 
-test("privacy and environment switches are forwarded when set", () => {
-	const env = buildContainerEnv(
-		{
-			...secrets,
-			ZOROVAL_CAPTURE_CONTENT: "false",
-			ZOROVAL_ENVIRONMENT: "production",
-			ZOROVAL_INGEST_URL: "https://ingest-preview.zoroval.com",
-			LOG_LEVEL: "DEBUG",
-		},
-		8080,
-	);
-	assert.equal(env.ZOROVAL_CAPTURE_CONTENT, "false");
-	assert.equal(env.ZOROVAL_ENVIRONMENT, "production");
-	assert.equal(env.ZOROVAL_INGEST_URL, "https://ingest-preview.zoroval.com");
-	assert.equal(env.LOG_LEVEL, "DEBUG");
+test("LOG_LEVEL is forwarded when set", () => {
+	assert.equal(buildContainerEnv({ ...secrets, LOG_LEVEL: "DEBUG" }, 8080).LOG_LEVEL, "DEBUG");
+});
+
+test("blank required secrets are omitted from the container environment", () => {
+	const env = buildContainerEnv({ ...secrets, DATABASE_URL: " " }, 8080);
+	assert.equal("DATABASE_URL" in env, false);
+	assert.equal(env.OPENAI_API_KEY, "c");
 });
 
 test("unrelated bindings are not forwarded", () => {

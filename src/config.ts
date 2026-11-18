@@ -8,16 +8,6 @@ export const REQUIRED_SECRETS = [
 	"OPENAI_API_KEY",
 	"DATABASE_URL",
 ] as const;
-// Optional secret: missing means Zoroval tracing is off.
-export const OPTIONAL_SECRETS = ["ZOROVAL_INGEST_KEY"] as const;
-// Optional plain config (wrangler.jsonc `vars`), forwarded only when set.
-// ZOROVAL_CAPTURE_CONTENT=false stops question/answer text being sent to Zoroval.
-// ZOROVAL_INGEST_URL selects the Zoroval ingest (unset = SDK default production ingest).
-export const OPTIONAL_VARS = [
-	"ZOROVAL_CAPTURE_CONTENT",
-	"ZOROVAL_ENVIRONMENT",
-	"ZOROVAL_INGEST_URL",
-] as const;
 
 export type RawEnv = object;
 
@@ -35,15 +25,15 @@ export function missingSecrets(env: RawEnv): string[] {
 }
 
 /**
- * The exact environment the container is started with. Optional values that are
- * unset or blank are left out (never sent as ""), so the app uses its own default.
+ * The exact environment the container is started with. A blank LOG_LEVEL falls
+ * back to INFO. Secrets that are unset or blank are left out (never sent as "").
  */
 export function buildContainerEnv(env: RawEnv, port: number): Record<string, string> {
 	const out: Record<string, string> = {
 		PORT: String(port),
 		LOG_LEVEL: get(env, "LOG_LEVEL") ?? "INFO",
 	};
-	for (const name of [...REQUIRED_SECRETS, ...OPTIONAL_SECRETS, ...OPTIONAL_VARS]) {
+	for (const name of REQUIRED_SECRETS) {
 		const value = get(env, name);
 		if (value !== undefined) out[name] = value;
 	}
