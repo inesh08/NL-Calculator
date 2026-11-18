@@ -1,0 +1,21 @@
+.git
+.github
+.gitignore
+.env
+.env.*
+!.env.example
+.venv
+venv
+__pycache__
+*.pyc
+tests
+node_modules
+src
+package.json
+package-lock.json
+tsconfig.json
+wrangler.jsonc
+worker-configuration.d.ts
+.wrangler
+*.md
+test case.json

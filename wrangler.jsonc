@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "nl-calculator",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-18",
+  "observability": { "enabled": true },
+
+  // Not secret. Secrets (SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, OPENAI_API_KEY,
+  // DATABASE_URL, ZOROVAL_INGEST_KEY) are set with `wrangler secret put`.
+  "vars": { "LOG_LEVEL": "INFO" },
+
+  // Keeps the container warm for the 2-minute monitor.
+  "triggers": { "crons": ["* * * * *"] },
+
+  "containers": [
+    {
+      "class_name": "NlCalculatorContainer",
+      "scheduling_policy": "durable_object",
+      "images": { "base": { "dockerfile": "./Dockerfile" } }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "NL_CALCULATOR", "class_name": "NlCalculatorContainer" }]
+  },
+  "exports": {
+    "NlCalculatorContainer": { "type": "durable-object", "storage": "sqlite" }
+  }
+}
